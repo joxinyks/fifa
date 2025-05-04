@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIFA Lig Takip - Ana Sayfa</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      margin: 0;
+      padding: 2rem;
+      color: #333;
+    }
+    h1, h2 {
+      text-align: center;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    input, select, button {
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    .form-group {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #macListesi, #fiksturListesi {
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>FIFA Lig Takip - Ana Sayfa</h1>
+  <div class="container">
+    <div class="form-group">
+      <input type="text" id="ligAdi" placeholder="Lig Adı" />
+      <button onclick="ligOlustur()">Lig Oluştur</button>
+    </div>
+    <div class="form-group">
+      <select id="ligSec"></select>
+      <button onclick="ligAc()">Ligi Aç</button>
+    </div>
+
+    <div id="ligEkrani" style="display:none;">
+      <h2 id="ligBaslik"></h2>
+
+      <table id="ligTablosu">
+        <thead>
+          <tr>
+            <th>Takım</th><th>O</th><th>G</th><th>B</th><th>M</th><th>AV</th><th>P</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="form-group">
+        <input type="text" id="takimAdi" placeholder="Takım Adı" />
+        <button onclick="takimEkle()">Takım Ekle</button>
+      </div>
+
+      <div class="form-group">
+        <button onclick="fiksturOlustur()">Fikstür Oluştur</button>
+      </div>
+
+      <div id="fiksturListesi"></div>
+
+      <div class="form-group">
+        <select id="evSahibi"></select>
+        <input type="number" id="skorEv" placeholder="Ev Skoru" min="0" />
+        <span>-</span>
+        <input type="number" id="skorDep" placeholder="Dep Skoru" min="0" />
+        <select id="deplasman"></select>
+        <button onclick="macKaydet()">Maçı Kaydet</button>
+      </div>
+
+      <div id="macListesi"></div>
+    </div>
+  </div>
+
+  <script>
+    let ligler = {};
+    let aktifLig = null;
+    let sonrakiMacIndex = 0;
+
+    function ligOlustur() {
+      const ad = document.getElementById('ligAdi').value.trim();
+      if (ad && !ligler[ad]) {
+        ligler[ad] = { takımlar: [], maçlar: [], fikstur: [] };
+        const sec = document.getElementById('ligSec');
+        const opt = document.createElement('option');
+        opt.value = ad;
+        opt.text = ad;
+        sec.add(opt);
+        document.getElementById('ligAdi').value = '';
+      }
+    }
+
+    function ligAc() {
+      const ad = document.getElementById('ligSec').value;
+      aktifLig = ligler[ad];
+      document.getElementById('ligBaslik').innerText = ad;
+      document.getElementById('ligEkrani').style.display = 'block';
+      tabloGuncelle();
+      takimDropDownlariGuncelle();
+      fiksturListele();
+      macListele();
+    }
+
+    function takimEkle() {
+      const ad = document.getElementById('takimAdi').value.trim();
+      if (ad && aktifLig && !aktifLig.takımlar.includes(ad)) {
+        aktifLig.takımlar.push(ad);
+        document.getElementById('takimAdi').value = '';
+        takimDropDownlariGuncelle();
+        tabloGuncelle();
+      }
+    }
+
+    function fiksturOlustur() {
+      const t = aktifLig.takımlar;
+      aktifLig.fikstur = [];
+      for (let i = 0; i < t.length; i++) {
+        for (let j = i + 1; j < t.length; j++) {
+          aktifLig.fikstur.push({ ev: t[i], dep: t[j] });
+        }
+      }
+      sonrakiMacIndex = 0;
+      fiksturListele();
+    }
+
+    function macKaydet() {
+      const ev = document.getElementById('evSahibi').value;
+      const dep = document.getElementById('deplasman').value;
+      const skorEv = parseInt(document.getElementById('skorEv').value);
+      const skorDep = parseInt(document.getElementById('skorDep').value);
+      if (ev && dep && ev !== dep && !isNaN(skorEv) && !isNaN(skorDep)) {
+        aktifLig.maçlar.push({ ev, dep, skorEv, skorDep });
+        document.getElementById('skorEv').value = '';
+        document.getElementById('skorDep').value = '';
+        tabloGuncelle();
+        macListele();
+        sonrakiMacIndex++;
+        otomatikSonrakiMac();
+      }
+    }
+
+    function tabloGuncelle() {
+      if (!aktifLig) return;
+      const stats = {};
+      aktifLig.takımlar.forEach(t => stats[t] = { O: 0, G: 0, B: 0, M: 0, AV: 0, P: 0 });
+      aktifLig.maçlar.forEach(m => {
+        const ev = stats[m.ev];
+        const dep = stats[m.dep];
+        ev.O++; dep.O++;
+        ev.AV += m.skorEv - m.skorDep;
+        dep.AV += m.skorDep - m.skorEv;
+        if (m.skorEv > m.skorDep) {
+          ev.G++; ev.P += 3; dep.M++;
+        } else if (m.skorEv < m.skorDep) {
+          dep.G++; dep.P += 3; ev.M++;
+        } else {
+          ev.B++; ev.P++; dep.B++; dep.P++;
+        }
+      });
+      const tbody = document.querySelector('#ligTablosu tbody');
+      tbody.innerHTML = '';
+      Object.entries(stats).sort((a,b)=>b[1].P - a[1].P || b[1].AV - a[1].AV).forEach(([takim, d]) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${takim}</td><td>${d.O}</td><td>${d.G}</td><td>${d.B}</td><td>${d.M}</td><td>${d.AV}</td><td>${d.P}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function takimDropDownlariGuncelle() {
+      const ev = document.getElementById('evSahibi');
+      const dep = document.getElementById('deplasman');
+      ev.innerHTML = '';
+      dep.innerHTML = '';
+      aktifLig.takımlar.forEach(t => {
+        ev.add(new Option(t, t));
+        dep.add(new Option(t, t));
+      });
+    }
+
+    function macListele() {
+      const container = document.getElementById('macListesi');
+      container.innerHTML = '<h3>Oynanan Maçlar</h3>' + aktifLig.maçlar.map(m => `${m.ev} ${m.skorEv} - ${m.skorDep} ${m.dep}`).join('<br>');
+    }
+
+    function fiksturListele() {
+      const container = document.getElementById('fiksturListesi');
+      container.innerHTML = '<h3>Fikstür</h3>' + aktifLig.fikstur.map((m, i) => `${i+1}. Hafta: ${m.ev} vs ${m.dep}`).join('<br>');
+    }
+
+    function otomatikSonrakiMac() {
+      const m = aktifLig.fikstur[sonrakiMacIndex];
+      if (m) {
+        document.getElementById('evSahibi').value = m.ev;
+        document.getElementById('deplasman').value = m.dep;
+      }
+    }
+  </script>
+</body>
+</html>
