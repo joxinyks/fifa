@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIFA Lig Takip Uygulaması</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      margin: 0;
+      padding: 2rem;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    input, select, button {
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: center;
+    }
+    .form-group {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>FIFA Lig Takip Uygulaması</h1>
+  <div class="container">
+    <div class="form-group">
+      <input type="text" id="ligAdi" placeholder="Lig Adı" />
+      <button onclick="ligOlustur()">Oluştur</button>
+      <select id="ligSec"></select>
+      <button onclick="ligAc()">Aç</button>
+    </div>
+
+    <table id="ligTablosu">
+      <thead>
+        <tr>
+          <th>Takım</th><th>O</th><th>G</th><th>B</th><th>M</th><th>AV</th><th>P</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="form-group">
+      <input type="text" id="takimAdi" placeholder="Takım Adı" />
+      <button onclick="takimEkle()">Ekle</button>
+    </div>
+
+    <div class="form-group">
+      <button onclick="fiksturOlustur()">Fikstür Oluştur</button>
+    </div>
+
+    <div class="form-group">
+      <select id="evSahibi"></select>
+      <input type="number" id="skorEv" placeholder="Ev Skoru" min="0" />
+      <span>-</span>
+      <input type="number" id="skorDep" placeholder="Dep Skoru" min="0" />
+      <select id="deplasman"></select>
+      <button onclick="macKaydet()">Maçı Kaydet</button>
+    </div>
+  </div>
+
+  <script>
+    let ligler = {};
+    let aktifLig = null;
+
+    function ligOlustur() {
+      const ad = document.getElementById('ligAdi').value.trim();
+      if (ad && !ligler[ad]) {
+        ligler[ad] = {
+          takımlar: [],
+          maçlar: [],
+        };
+        const sec = document.getElementById('ligSec');
+        const opt = document.createElement('option');
+        opt.value = ad;
+        opt.text = ad;
+        sec.add(opt);
+        document.getElementById('ligAdi').value = '';
+      }
+    }
+
+    function ligAc() {
+      const sec = document.getElementById('ligSec');
+      const ad = sec.value;
+      aktifLig = ligler[ad];
+      tabloGuncelle();
+      takimDropDownlariGuncelle();
+    }
+
+    function takimEkle() {
+      const ad = document.getElementById('takimAdi').value.trim();
+      if (ad && aktifLig && !aktifLig.takımlar.includes(ad)) {
+        aktifLig.takımlar.push(ad);
+        document.getElementById('takimAdi').value = '';
+        takimDropDownlariGuncelle();
+        tabloGuncelle();
+      }
+    }
+
+    function fiksturOlustur() {
+      if (!aktifLig) return;
+      const t = aktifLig.takımlar;
+      for (let i = 0; i < t.length; i++) {
+        for (let j = i + 1; j < t.length; j++) {
+          if (!aktifLig.maçlar.some(m => (m.ev === t[i] && m.dep === t[j]) || (m.ev === t[j] && m.dep === t[i]))) {
+            aktifLig.maçlar.push({ ev: t[i], dep: t[j], skorEv: null, skorDep: null });
+          }
+        }
+      }
+    }
+
+    function macKaydet() {
+      const ev = document.getElementById('evSahibi').value;
+      const dep = document.getElementById('deplasman').value;
+      const skorEv = parseInt(document.getElementById('skorEv').value);
+      const skorDep = parseInt(document.getElementById('skorDep').value);
+      if (ev && dep && ev !== dep && !isNaN(skorEv) && !isNaN(skorDep)) {
+        aktifLig.maçlar.push({ ev, dep, skorEv, skorDep });
+        tabloGuncelle();
+      }
+    }
+
+    function tabloGuncelle() {
+      if (!aktifLig) return;
+      const stats = {};
+      aktifLig.takımlar.forEach(t => stats[t] = { O: 0, G: 0, B: 0, M: 0, AV: 0, P: 0 });
+
+      aktifLig.maçlar.forEach(m => {
+        if (m.skorEv !== null && m.skorDep !== null) {
+          const ev = stats[m.ev];
+          const dep = stats[m.dep];
+          ev.O++; dep.O++;
+          ev.AV += m.skorEv - m.skorDep;
+          dep.AV += m.skorDep - m.skorEv;
+          if (m.skorEv > m.skorDep) {
+            ev.G++; ev.P += 3;
+            dep.M++;
+          } else if (m.skorEv < m.skorDep) {
+            dep.G++; dep.P += 3;
+            ev.M++;
+          } else {
+            ev.B++; ev.P++;
+            dep.B++; dep.P++;
+          }
+        }
+      });
+
+      const tbody = document.querySelector('#ligTablosu tbody');
+      tbody.innerHTML = '';
+      Object.entries(stats).sort((a,b)=>b[1].P - a[1].P || b[1].AV - a[1].AV).forEach(([takim, d]) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${takim}</td><td>${d.O}</td><td>${d.G}</td><td>${d.B}</td><td>${d.M}</td><td>${d.AV}</td><td>${d.P}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function takimDropDownlariGuncelle() {
+      const ev = document.getElementById('evSahibi');
+      const dep = document.getElementById('deplasman');
+      ev.innerHTML = '';
+      dep.innerHTML = '';
+      aktifLig.takımlar.forEach(t => {
+        const opt1 = new Option(t, t);
+        const opt2 = new Option(t, t);
+        ev.add(opt1);
+        dep.add(opt2);
+      });
+    }
+  </script>
+</body>
+</html>
